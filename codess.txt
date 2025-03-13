@@ -1,0 +1,205 @@
+#include <WiFi.h>
+#include <SPIFFS.h>
+#include <WebServer.h>
+
+const char* ssid = "CR";      // Replace with your Wi-Fi SSID
+const char* password = "karthi1234"; // Replace with your Wi-Fi password
+  
+WebServer server;
+
+// Predefined user credentials
+const String validUser = "chinnaraja";
+const String validPassword = "Karthi1234";
+
+// Variable to track login status
+bool isAuthenticated = false;
+
+void setup() {
+    Serial.begin(115200);
+
+    // Initialize SPIFFS
+    if (!SPIFFS.begin(true)) {
+        Serial.println("SPIFFS Mount Failed");
+        return;
+    }
+
+    // Connect to Wi-Fi
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\nConnected to WiFi!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+
+    // Define routes
+    server.on("/", HTTP_GET, handleLoginPage);
+    server.on("/login", HTTP_POST, handleLogin);
+    server.on("/filemanager", HTTP_GET, handleFileManager);
+    server.on("/read", HTTP_POST, handleFileRead);
+    server.on("/play", HTTP_POST, handleFilePlay);  // New route for playing MP3 files
+    server.on("/download", HTTP_POST, handleFileDownload);  // Route for file download
+
+    server.begin();
+    Serial.println("HTTP server started");
+}
+
+void loop() {
+    server.handleClient();
+}
+
+// Display the login page
+void handleLoginPage() {
+    String html = "<h1>ESP32 File Manager - Login</h1>";
+    html += "<form action='/login' method='POST'>";
+    html += "User ID: <input type='text' name='userid'><br>";
+    html += "Password: <input type='password' name='password'><br>";
+    html += "<input type='submit' value='Login'>";
+    html += "</form>";
+    server.send(200, "text/html", html);
+}
+
+// Handle the login form submission
+void handleLogin() {
+    if (server.hasArg("userid") && server.hasArg("password")) {
+        String userid = server.arg("userid");
+        String password = server.arg("password");
+
+        // Check if credentials are valid
+        if (userid == validUser && password == validPassword) {
+            isAuthenticated = true;
+            server.sendHeader("Location", "/filemanager");
+            server.send(302);  // Redirect to the file manager
+        } else {
+            isAuthenticated = false;
+            server.send(403, "text/plain", "Invalid Credentials. Please try again.");
+        }
+    } else {
+        server.send(400, "text/plain", "Bad Request - Missing credentials");
+    }
+}
+
+// Display the file manager only if authenticated
+void handleFileManager() {
+    if (!isAuthenticated) {
+        server.sendHeader("Location", "/");
+        server.send(302);  // Redirect to login page if not authenticated
+        return;
+    }
+
+    String html = "<h1>ESP32 File Manager</h1>";
+    html += "<h2>Files:</h2>";
+    html += "<ul>";
+
+    File root = SPIFFS.open("/");
+    if (!root || !root.isDirectory()) {
+        server.send(500, "text/plain", "Failed to open SPIFFS directory");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while (file) {
+        String fileName = String(file.name());
+        html += "<li>" + fileName;
+
+        // Check if it's a text file
+        if (fileName.endsWith(".txt")) {
+            html += " <form action='/read' method='POST' style='display:inline;'>";
+            html += "<input type='hidden' name='file' value='" + fileName + "'>";
+            html += "<input type='submit' value='Read'></form>";
+        }
+
+        // Check if it's an MP3 file
+        if (fileName.endsWith(".mp3")) {
+            html += " <form action='/play' method='POST' style='display:inline;'>";
+            html += "<input type='hidden' name='file' value='" + fileName + "'>";
+            html += "<input type='submit' value='Play'></form>";
+            html += " <form action='/download' method='POST' style='display:inline;'>";
+            html += "<input type='hidden' name='file' value='" + fileName + "'>";
+            html += "<input type='submit' value='Download'></form>";
+        }
+
+        html += "</li>";
+        file = root.openNextFile();
+    }
+    html += "</ul>";
+    server.send(200, "text/html", html);
+}
+
+// Handle file reading
+void handleFileRead() {
+    if (!isAuthenticated) {
+        server.sendHeader("Location", "/");
+        server.send(302);  // Redirect to login page if not authenticated
+        return;
+    }
+
+    if (server.hasArg("file")) {
+        String filename = server.arg("file");
+        if (!filename.startsWith("/")) {
+            filename = "/" + filename;
+        }
+
+        File file = SPIFFS.open(filename, FILE_READ);
+        if (file) {
+            String content = file.readString();
+            file.close();
+            server.send(200, "text/plain", content);
+        } else {
+            server.send(500, "text/plain", "Failed to read file");
+        }
+    } else {
+        server.send(400, "text/plain", "Bad Request - Missing file argument");
+    }
+}
+
+// Handle MP3 file playing (you can implement MP3 playback with I2S or a suitable library)
+void handleFilePlay() {
+    if (!isAuthenticated) {
+        server.sendHeader("Location", "/");
+        server.send(302);  // Redirect to login page if not authenticated
+        return;
+    }
+
+    if (server.hasArg("file")) {
+        String filename = server.arg("file");
+        if (!filename.startsWith("/")) {
+            filename = "/" + filename;
+        }
+
+        // Here, you can use an MP3 decoder library to play the file (e.g., I2S or DFPlayer)
+        // For example, using I2S for audio output or an external MP3 player module.
+
+        server.send(200, "text/plain", "MP3 playing feature not implemented yet.");
+    } else {
+        server.send(400, "text/plain", "Bad Request - Missing file argument");
+    }
+}
+
+// Handle file download
+void handleFileDownload() {
+    if (!isAuthenticated) {
+        server.sendHeader("Location", "/");
+        server.send(302);  // Redirect to login page if not authenticated
+        return;
+    }
+
+    if (server.hasArg("file")) {
+        String filename = server.arg("file");
+        if (!filename.startsWith("/")) {
+            filename = "/" + filename;
+        }
+
+        File file = SPIFFS.open(filename, FILE_READ);
+        if (file) {
+            server.sendHeader("Content-Disposition", "attachment; filename=" + filename); // Force download
+            server.streamFile(file, "application/octet-stream");  // Send the file as binary
+            file.close();
+        } else {
+            server.send(500, "text/plain", "Failed to download file");
+        }
+    } else {
+        server.send(400, "text/plain", "Bad Request - Missing file argument");
+    }
+}
