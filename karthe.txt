@@ -1,0 +1,87 @@
+✅ Fixed Code
+cpp
+Copy
+Edit
+#define RXD2 16  // M66 TX -> ESP32 RX (GPIO16)
+#define TXD2 17  // M66 RX -> ESP32 TX (GPIO17)
+
+void setup() {
+    Serial.begin(115200);
+    Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2); // Correct way to initialize UART2
+
+    connectToNetwork();
+    downloadFile();
+}
+
+void loop() {
+    // No need for continuous loop actions
+}
+
+// Function to send AT commands and wait for response
+void sendATCommand(const char* command, const char* expectedResponse) {
+    Serial2.println(command);
+    delay(500);
+    while (Serial2.available()) {
+        String response = Serial2.readString();
+        Serial.println(response); // Print response to Serial Monitor
+        if (response.indexOf(expectedResponse) != -1) {
+            return;
+        }
+    }
+}
+
+// Connect to the internet using M66
+void connectToNetwork() {
+    Serial.println("Connecting to network...");
+    sendATCommand("AT", "OK");
+    sendATCommand("AT+QICSGP=1,\"airtel\"", "OK");  // Set APN for Airtel
+    sendATCommand("AT+QIACT=1", "OK");             // Activate PDP context
+    sendATCommand("AT+QHTTPURL=50,30", "CONNECT"); // Set URL length
+    sendATCommand("https://chinnarajacr.github.io/mp3-hosting/karthi.txt", "OK");
+}
+
+// Download file in chunks
+void downloadFile() {
+    Serial.println("Starting file download...");
+    sendATCommand("AT+QHTTPGET=60", "OK"); // Request the file
+
+    int totalSize = 0;
+    while (true) {
+        sendATCommand("AT+QHTTPREAD=1500", "CONNECT"); // Read 1500 bytes
+        String response = readResponse();
+        if (response.indexOf("OK") != -1) {
+            totalSize += response.length();
+            Serial.println(response); // Print file content
+        } else {
+            Serial.println("No more data to read!");
+            break;
+        }
+    }
+    
+    Serial.println("File download complete! Size: " + String(totalSize) + " bytes");
+}
+
+// Read response data from M66
+String readResponse() {
+    String data = "";
+    unsigned long start = millis();
+    while (millis() - start < 5000) {  // Timeout after 5 seconds
+        while (Serial2.available()) {
+            char c = Serial2.read();
+            data += c;
+        }
+    }
+    return data;
+}
+🚀 What’s Fixed?
+✔ Uses Serial2 instead of HardwareSerial M66_SERIAL(2)
+✔ Fixed begin() function with correct parameters
+✔ Ensured compatibility with ESP32
+
+🔴 Important:
+✅ Select "ESP32 Dev Module" in Arduino IDE (not Arduino Uno/Mega).
+✅ Make sure your ESP32 is wired properly to M66:
+
+ESP32 GPIO16 → M66 TX
+ESP32 GPIO17 → M66 RX
+Now, upload the code and test it! 🚀
