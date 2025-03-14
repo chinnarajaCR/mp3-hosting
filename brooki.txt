@@ -1,0 +1,45 @@
+#include <SPI.h>
+#include <SD.h>
+
+#define SD_CS 13  // Change this to your SD card module's CS pin
+
+void listFiles(File dir, int numTabs) {
+    while (true) {
+        File entry = dir.openNextFile();
+        if (!entry) {
+            // No more files
+            break;
+        }
+        for (int i = 0; i < numTabs; i++) {
+            Serial.print("\t");
+        }
+        Serial.print(entry.name());
+        if (entry.isDirectory()) {
+            Serial.println(" (Dir)");
+            listFiles(entry, numTabs + 1);  // Recursive call for directories
+        } else {
+            Serial.print("\tSize: ");
+            Serial.println(entry.size());
+        }
+        entry.close();
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    while (!Serial);  // Wait for serial monitor to open (only needed for some boards)
+
+    Serial.print("Initializing SD card...");
+    if (!SD.begin(SD_CS)) {
+        Serial.println(" SD initialization failed!");
+        return;
+    }
+    Serial.println(" SD initialization done.");
+    
+    File root = SD.open("/");
+    listFiles(root, 0);
+}
+
+void loop() {
+    // Nothing in loop
+}
